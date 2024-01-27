@@ -28,7 +28,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "stm32f7xx.h"
+//#include "stm32f7xx.h"
 #include "bmp2_config.h"
 /* USER CODE END Includes */
 
@@ -55,44 +55,47 @@ double temp = 0;     // [degC]
 unsigned int temp_int;
 char msg[32] = { 0, };
 double output = 0;
-uint8_t rx_buffer[64];
-double received_temp = 0;
-const int rx_msg_len = 4;
+int received_temp = 0;
+const int rx_len = 2;
+
+uint8_t rx_sign;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+unsigned int setpoint_int;
+unsigned int output_int;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	unsigned int setpoint_int;
-	unsigned int output_int;
-	if(htim == &htim2)
+	if(htim == &htim5)
 	{
 		temp = BMP2_ReadTemperature_degC(&bmp2dev_1);
-		temp_int = 1000*temp;
-	    //uint8_t tx_buffer[64];
-	    setpoint_int = 1000*received_temp;
-	    output_int = 1000*output;
-	    uint8_t tx_buffer[64];
-//	    int tx_msg_len = sprintf((char*)tx_buffer, "Temperature: %2u.%03u, Setpoint: %2u.%03u, Control: %2u.%03u\r\n",
-//	    			temp_int / 1000, temp_int % 1000,
-//					setpoint_int / 1000, setpoint_int % 1000,
-//					output_int / 1000, output_int % 1000);
-//	    HAL_UART_Transmit(&huart3, tx_buffer, tx_msg_len, 100);
-	    int tx_msg_len = sprintf((char*)tx_buffer, "%2u%03u\r", temp_int / 1000, temp_int % 1000);
-	    HAL_UART_Transmit(&huart3, tx_buffer, tx_msg_len, 100);
+
 	}
+//	if(htim == &htim2)
+//	{
+//		temp_int = 1000*temp;
+//	    setpoint_int = 1000*received_temp;
+//	    output_int = 1000*output;
+//	    uint8_t tx_buffer[64];
+////	    int tx_msg_len = sprintf((char*)tx_buffer, "Temperature: %2u.%03u, Setpoint: %2u.%03u, Control: %2u.%03u\r\n",
+////	    			temp_int / 1000, temp_int % 1000,
+////					setpoint_int / 1000, setpoint_int % 1000,
+////					output_int / 1000, output_int % 1000);
+////	    HAL_UART_Transmit(&huart3, tx_buffer, tx_msg_len, 100);
+//	    int tx_msg_len = sprintf((char*)tx_buffer, "%2u%03u\r", temp_int / 1000, temp_int % 1000);
+//	    HAL_UART_Transmit(&huart3, tx_buffer, tx_msg_len, 100);
+//	}
 }
 
-double setpoint = 60.0; // Wartość zadana
+double setpoint = 20; // Wartość zadana
 
-double kp = 100;//10.24895559868381;
+double kp = 100;
 double ki = 0.15;
 double kd = 0;
 
@@ -111,24 +114,9 @@ void PID_Control(double measured_value) {
     else{
     	integral += ki * error;}
 
-//    if (measured_value < 0.95*setpoint)
-//    {
-//    	output = 100.0;
-//    }
-//    else
-//    {
-//    	if(output == 100.0)
-//    	{
-//    		output = 0;
-//    	}
-//    	else{
-//    		output = proportional + integral + derivative;}
-//    }
 
     output = proportional + integral;
-
     output_i = 1000*output;
-    previous_error = error;
 
     if (output < 0)
     {
@@ -140,31 +128,10 @@ void PID_Control(double measured_value) {
     	duty = 100;
     }
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 10*duty);
+
+    previous_error = error;
 }
 
-
-//void PID_Control(double measured_value, int duty1) {
-//
-//    if (measured_value < 0.95*setpoint)
-//    {
-//    	output = 100.0;
-//    }
-//    else
-//    {
-//    	output = 0;
-//    }
-//
-//    if (output < 0)
-//    {
-//    	output = 0;
-//    }
-//    duty = output;
-//    if (duty > 100)
-//    {
-//    	duty = 100;
-//    }
-//    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 10*duty);
-//}
 /* USER CODE END 0 */
 
 /**
@@ -199,11 +166,15 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   MX_SPI4_Init();
+  MX_TIM4_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   BMP2_Init(&bmp2dev_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
   HAL_TIM_Base_Start_IT(&htim2);
-//  HAL_UART_Receive_IT(&huart3, rx_buffer, tx_msg_len);
+  HAL_TIM_Base_Start_IT(&htim5);
+  HAL_UART_Receive_IT (&huart3, &rx_sign, rx_len);
+
 
   /* USER CODE END 2 */
 
@@ -217,7 +188,7 @@ int main(void)
 //	        received_temp = setpoint;
 //	    }
 	  PID_Control(temp);
-	  HAL_Delay(1);
+	  HAL_Delay(10);
 
     /* USER CODE END WHILE */
 
@@ -283,7 +254,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(huart->Instance == USART3)
+	{
+		int rx_temp = strtol((char*)&rx_sign, 0, 10);
+		setpoint = rx_temp;
+		HAL_UART_Receive_IT(&huart3, &rx_sign, rx_len);
+	}
+}
 /* USER CODE END 4 */
 
 /**
