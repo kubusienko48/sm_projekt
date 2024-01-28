@@ -1,7 +1,5 @@
 "./Core/Src/bmp2.o"
 "./Core/Src/bmp2_config.o"
-"./Core/Src/btn.o"
-"./Core/Src/btn_config.o"
 "./Core/Src/gpio.o"
 "./Core/Src/led.o"
 "./Core/Src/led_config.o"
